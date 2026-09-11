@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Almoxarifado 1º SGB - Corpo de Bombeiros SP</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -663,10 +662,131 @@
             font-size: 0.9rem;
         }
 
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.7rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            letter-spacing: 0.03em;
+        }
+
+        .status-badge.status-operando {
+            background: #e3f8e9;
+            color: #1a7a3c;
+        }
+
+        .status-badge.status-reserva {
+            background: #fff6d9;
+            color: #8a6d00;
+        }
+
+        .status-badge.status-baixada {
+            background: #fce4e4;
+            color: #cc0000;
+        }
+
+        .status-badge.status-outro {
+            background: #eee;
+            color: #555;
+        }
+
         .detalhes-linha span:last-child {
             color: #1a1a1a;
             text-align: right;
             max-width: 60%;
+        }
+
+        .fotos-secao {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #eee;
+        }
+
+        .fotos-titulo {
+            color: #666;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .fotos-galeria {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+
+        .foto-thumb-wrap {
+            width: 84px;
+            height: 84px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f4f4f4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #eee;
+            cursor: pointer;
+        }
+
+        .foto-thumb-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .foto-thumb-loading {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #ddd;
+            border-top-color: #cc0000;
+            border-radius: 50%;
+            animation: girar 0.8s linear infinite;
+        }
+
+        @keyframes girar {
+            to { transform: rotate(360deg); }
+        }
+
+        .foto-thumb-erro {
+            color: #999;
+            font-size: 1.5rem;
+        }
+
+        .fotos-vazio {
+            color: #999;
+            font-size: 0.85rem;
+        }
+
+        .modal-lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .modal-lightbox.active {
+            display: flex;
+        }
+
+        .modal-lightbox img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 6px;
+        }
+
+        .modal-lightbox-close {
+            position: absolute;
+            top: 1.2rem;
+            right: 1.5rem;
+            color: #fff;
+            font-size: 2rem;
+            cursor: pointer;
+            line-height: 1;
         }
 
         .btn-cancel {
@@ -1026,7 +1146,17 @@
                 <button class="modal-close" id="btnFecharModalDetalhesItem">&times;</button>
             </div>
             <div class="detalhes-lista" id="detalhesItemLista"></div>
+            <div class="fotos-secao" id="detalhesItemFotosSecao" hidden>
+                <div class="fotos-titulo">Fotos</div>
+                <div class="fotos-galeria" id="detalhesItemFotos"></div>
+            </div>
         </div>
+    </div>
+
+    <!-- ============ LIGHTBOX (foto ampliada) ============ -->
+    <div id="modalLightbox" class="modal-lightbox">
+        <span class="modal-lightbox-close" id="btnFecharLightbox">&times;</span>
+        <img id="lightboxImg" src="" alt="Foto ampliada">
     </div>
 
     <!-- ============ TOAST ============ -->
@@ -1250,7 +1380,7 @@
                 // obs.) não cabem no cabeçalho do dashboard — quando alguma delas
                 // está preenchida, o nome do item vira clicável e abre um pop-up
                 // com essas informações extras.
-                const temDetalhes = !!(item.marca || item.patrimonio || item.nSerie || item.status || item.obs);
+                const temDetalhes = !!(item.marca || item.patrimonio || item.nSerie || item.status || item.obs || item.fotos);
                 const itemCelula = temDetalhes
                     ? `<td class="item-clickable" title="Ver mais informações">${escapeHtml(item.item)}<span class="info-icon" aria-hidden="true">&#9432;</span></td>`
                     : `<td>${escapeHtml(item.item)}</td>`;
@@ -1494,6 +1624,24 @@
         const modalDetalhesItem = document.getElementById('modalDetalhesItem');
         const btnFecharModalDetalhesItem = document.getElementById('btnFecharModalDetalhesItem');
 
+        // Colore o status do equipamento para saltar aos olhos no meio das
+        // outras informações: Operando (verde), Reserva (amarelo), Baixada
+        // (vermelho). Qualquer outro texto cadastrado na planilha cai no
+        // estilo neutro (cinza), sem quebrar a exibição.
+        function renderizarStatusBadge(valor) {
+            const texto = String(valor).trim();
+            const normalizado = texto
+                .toLowerCase()
+                .normalize('NFD').replace(/[̀-ͯ]/g, ''); // remove acentos
+
+            let classe = 'status-outro';
+            if (normalizado === 'operando') classe = 'status-operando';
+            else if (normalizado === 'reserva') classe = 'status-reserva';
+            else if (normalizado === 'baixada') classe = 'status-baixada';
+
+            return `<span class="status-badge ${classe}">${escapeHtml(texto)}</span>`;
+        }
+
         function abrirDetalhesItem(row) {
             if (!row) return;
             const { almoxarifado, categoria, item, tamanho } = row.dataset;
@@ -1523,9 +1671,11 @@
             document.getElementById('detalhesItemLista').innerHTML = campos.map(([rotulo, valor]) => `
                 <div class="detalhes-linha">
                     <span>${escapeHtml(rotulo)}</span>
-                    <span>${escapeHtml(String(valor))}</span>
+                    <span>${rotulo === 'Status' ? renderizarStatusBadge(valor) : escapeHtml(String(valor))}</span>
                 </div>
             `).join('');
+
+            carregarFotos(dados);
 
             modalDetalhesItem.classList.add('active');
         }
@@ -1537,6 +1687,87 @@
         btnFecharModalDetalhesItem.addEventListener('click', fecharModalDetalhesItem);
         modalDetalhesItem.addEventListener('click', (e) => {
             if (e.target === modalDetalhesItem) fecharModalDetalhesItem();
+        });
+
+        // ============================================================================
+        // GALERIA DE FOTOS DO ITEM (busca via Apps Script, que entrega a foto em
+        // base64 — o dashboard nunca acessa o Drive diretamente nem expõe links
+        // públicos das fotos)
+        // ============================================================================
+
+        // Aceita uma ou várias fotos na mesma célula da planilha, separadas por
+        // vírgula, ponto e vírgula ou quebra de linha. Cada item pode ser o link
+        // completo do Drive ou apenas o ID do arquivo — quem interpreta isso é o
+        // backend (extrairIdDrive), então aqui só dividimos e limpamos os tokens.
+        function dividirFotos(valorFotos) {
+            if (!valorFotos) return [];
+            return String(valorFotos)
+                .split(/[,;\n]/)
+                .map(token => token.trim())
+                .filter(Boolean);
+        }
+
+        function carregarFotos(dados) {
+            const secao = document.getElementById('detalhesItemFotosSecao');
+            const galeria = document.getElementById('detalhesItemFotos');
+            const tokens = dividirFotos(dados.fotos);
+
+            if (tokens.length === 0) {
+                secao.hidden = true;
+                galeria.innerHTML = '';
+                return;
+            }
+
+            secao.hidden = false;
+            galeria.innerHTML = tokens.map((token, indice) => `
+                <div class="foto-thumb-wrap" data-foto-indice="${indice}">
+                    <div class="foto-thumb-loading" title="Carregando foto..."></div>
+                </div>
+            `).join('');
+
+            tokens.forEach((token, indice) => {
+                fetch(`${API_URL}?acao=getFoto&id=${encodeURIComponent(token)}`)
+                    .then(resposta => resposta.json())
+                    .then(resultado => {
+                        const wrap = galeria.querySelector(`[data-foto-indice="${indice}"]`);
+                        if (!wrap) return;
+
+                        if (resultado.sucesso && resultado.dados && resultado.dados.base64) {
+                            const src = `data:${resultado.dados.tipo || 'image/jpeg'};base64,${resultado.dados.base64}`;
+                            wrap.innerHTML = `<img src="${src}" alt="Foto do item" loading="lazy">`;
+                            wrap.title = 'Clique para ampliar';
+                            wrap.addEventListener('click', () => abrirLightbox(src));
+                        } else {
+                            wrap.innerHTML = '<span class="foto-thumb-erro">&#9888;</span>';
+                            wrap.title = resultado.mensagem || 'Não foi possível carregar esta foto';
+                        }
+                    })
+                    .catch(() => {
+                        const wrap = galeria.querySelector(`[data-foto-indice="${indice}"]`);
+                        if (!wrap) return;
+                        wrap.innerHTML = '<span class="foto-thumb-erro">&#9888;</span>';
+                        wrap.title = 'Falha de conexão ao buscar a foto';
+                    });
+            });
+        }
+
+        const modalLightbox = document.getElementById('modalLightbox');
+        const lightboxImg = document.getElementById('lightboxImg');
+        const btnFecharLightbox = document.getElementById('btnFecharLightbox');
+
+        function abrirLightbox(src) {
+            lightboxImg.src = src;
+            modalLightbox.classList.add('active');
+        }
+
+        function fecharLightbox() {
+            modalLightbox.classList.remove('active');
+            lightboxImg.src = '';
+        }
+
+        btnFecharLightbox.addEventListener('click', fecharLightbox);
+        modalLightbox.addEventListener('click', (e) => {
+            if (e.target === modalLightbox) fecharLightbox();
         });
 
         // ============================================================================
