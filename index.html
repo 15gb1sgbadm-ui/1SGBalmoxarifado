@@ -315,6 +315,55 @@
             color: #cc0000;
         }
 
+        .stats-almox-section {
+            margin-bottom: 2rem;
+        }
+
+        .stats-almox-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.8rem;
+        }
+
+        .stats-almox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.8rem;
+        }
+
+        .stat-almox-card {
+            background: white;
+            padding: 1rem 1.2rem;
+            border-radius: 8px;
+            border-left: 3px solid #0066cc;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .stat-almox-nome {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .stat-almox-linha {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 0.2rem;
+        }
+
+        .stat-almox-linha strong {
+            color: #cc0000;
+            font-weight: 700;
+        }
+
         /* ============ TABELA DE ESTOQUE ============ */
         .estoque-container {
             background: white;
@@ -571,6 +620,55 @@
             margin-top: 1.5rem;
         }
 
+        /* Nome do item com informações extras cadastradas (marca, patrimônio,
+           nº série, status, obs.) na planilha — fica clicável para abrir o
+           pop-up de detalhes, já que essas colunas não cabem no cabeçalho. */
+        .item-clickable {
+            cursor: pointer;
+        }
+
+        .item-clickable:hover {
+            text-decoration: underline;
+        }
+
+        .info-icon {
+            color: #cc0000;
+            font-size: 0.75em;
+            margin-left: 0.3rem;
+            vertical-align: super;
+        }
+
+        .detalhes-lista {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .detalhes-linha {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        .detalhes-linha:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .detalhes-linha span:first-child {
+            color: #666;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .detalhes-linha span:last-child {
+            color: #1a1a1a;
+            text-align: right;
+            max-width: 60%;
+        }
+
         .btn-cancel {
             background: #ddd;
             color: #333;
@@ -785,6 +883,12 @@
                 </div>
             </div>
 
+            <!-- STATS POR ALMOXARIFADO -->
+            <div class="stats-almox-section">
+                <div class="stats-almox-title">Por Almoxarifado</div>
+                <div class="stats-almox-grid" id="statsAlmoxGrid"></div>
+            </div>
+
             <!-- ESTOQUE TABLE -->
             <div class="estoque-container">
                 <div class="estoque-header">
@@ -883,6 +987,45 @@
                     <button type="submit" class="btn-confirm">Confirmar</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- ============ MODAL DESTINATÁRIO (SAÍDA) ============ -->
+    <div id="modalDestinatario" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Para quem?</h2>
+                <button class="modal-close" id="btnFecharModalDestinatario">&times;</button>
+            </div>
+            <p class="modal-subtitle" style="margin-top: 0;">Informe o militar ou o pago que está recebendo o material.</p>
+
+            <form id="formDestinatario" class="modal-form">
+                <div class="form-field">
+                    <label>Militar ou pago *</label>
+                    <input
+                        type="text"
+                        id="destinatarioInput"
+                        placeholder="Nome do militar ou pago"
+                        autocomplete="off"
+                    >
+                </div>
+
+                <div class="form-buttons">
+                    <button type="button" class="btn-cancel" id="btnCancelarDestinatario">Cancelar</button>
+                    <button type="submit" class="btn-confirm">Confirmar saída</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============ MODAL DETALHES DO ITEM ============ -->
+    <div id="modalDetalhesItem" class="modal">
+        <div class="modal-content" style="max-width: 440px;">
+            <div class="modal-header">
+                <h2 id="detalhesItemTitulo">Detalhes do item</h2>
+                <button class="modal-close" id="btnFecharModalDetalhesItem">&times;</button>
+            </div>
+            <div class="detalhes-lista" id="detalhesItemLista"></div>
         </div>
     </div>
 
@@ -1103,11 +1246,19 @@
             tbody.innerHTML = dados.map(item => {
                 const tamanho = item.tamanho || '-';
                 const qtd = item.quantidade || 0;
+                // Colunas G-K da aba Estoque (marca, patrimônio, nº série, status,
+                // obs.) não cabem no cabeçalho do dashboard — quando alguma delas
+                // está preenchida, o nome do item vira clicável e abre um pop-up
+                // com essas informações extras.
+                const temDetalhes = !!(item.marca || item.patrimonio || item.nSerie || item.status || item.obs);
+                const itemCelula = temDetalhes
+                    ? `<td class="item-clickable" title="Ver mais informações">${escapeHtml(item.item)}<span class="info-icon" aria-hidden="true">&#9432;</span></td>`
+                    : `<td>${escapeHtml(item.item)}</td>`;
                 return `
                 <tr data-almoxarifado="${escapeHtml(item.almoxarifado)}" data-categoria="${escapeHtml(item.categoria)}" data-item="${escapeHtml(item.item)}" data-tamanho="${escapeHtml(tamanho)}">
                     <td>${escapeHtml(item.almoxarifado)}</td>
                     <td>${escapeHtml(item.categoria)}</td>
-                    <td>${escapeHtml(item.item)}</td>
+                    ${itemCelula}
                     <td>${escapeHtml(tamanho)}</td>
                     <td style="text-align: right;">
                         <div class="qty-control">
@@ -1175,6 +1326,32 @@
             document.getElementById('statTotalItens').textContent = totalItens;
             document.getElementById('statTotalQtd').textContent = totalQtd;
             document.getElementById('statUltima').textContent = ultima;
+
+            atualizarStatsPorAlmoxarifado();
+        }
+
+        // Total de itens e total em estoque agrupados por almoxarifado
+        // (SALVAMENTO, EDUCACIONAL, RESGATE etc. — usa a lista padronizada
+        // da aba "Almoxarifados", assim mostra também os que estão zerados).
+        function atualizarStatsPorAlmoxarifado() {
+            const grid = document.getElementById('statsAlmoxGrid');
+
+            const porAlmox = estadoGlobal.almoxarifados.map(a => {
+                const itensDoAlmox = estadoGlobal.estoque.filter(e => e.almoxarifado === a.nome);
+                return {
+                    nome: a.nome,
+                    totalItens: itensDoAlmox.length,
+                    totalQtd: itensDoAlmox.reduce((sum, e) => sum + (e.quantidade || 0), 0)
+                };
+            });
+
+            grid.innerHTML = porAlmox.map(a => `
+                <div class="stat-almox-card">
+                    <div class="stat-almox-nome">${escapeHtml(a.nome)}</div>
+                    <div class="stat-almox-linha"><span>Itens</span><strong>${a.totalItens}</strong></div>
+                    <div class="stat-almox-linha"><span>Em estoque</span><strong>${a.totalQtd}</strong></div>
+                </div>
+            `).join('');
         }
 
         // ============================================================================
@@ -1200,18 +1377,22 @@
         // AJUSTE RÁPIDO DE QUANTIDADE (+/-) PARA ITENS JÁ CADASTRADOS
         // ============================================================================
 
-        document.getElementById('estoqueBody').addEventListener('click', async (e) => {
-            const btn = e.target.closest('.qty-btn');
-            if (!btn || btn.disabled) return;
-            if (ajusteEmAndamento) return;
+        // Localiza a linha da tabela pelo mesmo conjunto de dados usado nos
+        // data-attributes (pode não existir mais no DOM se a lista foi
+        // filtrada/recarregada entre o clique e a confirmação do pop-up).
+        function encontrarLinhaEstoque(almoxarifado, categoria, item, tamanho) {
+            return Array.from(document.querySelectorAll('#estoqueBody tr[data-item]')).find(tr =>
+                tr.dataset.almoxarifado === almoxarifado &&
+                tr.dataset.categoria === categoria &&
+                tr.dataset.item === item &&
+                tr.dataset.tamanho === tamanho
+            );
+        }
 
-            const row = btn.closest('tr');
-            const almoxarifado = row.dataset.almoxarifado;
-            const categoria = row.dataset.categoria;
-            const item = row.dataset.item;
-            const tamanho = row.dataset.tamanho;
-            const operacao = btn.classList.contains('qty-plus') ? 'entrada' : 'saída';
-
+        // Executa de fato o lançamento de 1 unidade (entrada ou saída) e
+        // recarrega o estoque. Para saída, "destinatario" (militar ou pago)
+        // é enviado e gravado pelo backend na coluna J da aba Transacoes.
+        async function executarAjusteRapido({ almoxarifado, categoria, item, tamanho, operacao, destinatario }) {
             const itemAtual = estadoGlobal.estoque.find(d =>
                 d.almoxarifado === almoxarifado &&
                 d.categoria === categoria &&
@@ -1229,23 +1410,30 @@
                 return;
             }
 
+            const row = encontrarLinhaEstoque(almoxarifado, categoria, item, tamanho);
+
             ajusteEmAndamento = true;
-            row.querySelectorAll('.qty-btn').forEach(b => b.disabled = true);
+            if (row) row.querySelectorAll('.qty-btn').forEach(b => b.disabled = true);
 
             try {
+                const payload = {
+                    acao: 'lancar',
+                    cpf: estadoGlobal.usuarioCPF,
+                    almoxarifado,
+                    categoria,
+                    item,
+                    tamanho,
+                    quantidade: 1,
+                    operacao,
+                    destinacao: 'Ajuste rápido (+/-)'
+                };
+                if (operacao === 'saída') {
+                    payload.destinatario = destinatario;
+                }
+
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({
-                        acao: 'lancar',
-                        cpf: estadoGlobal.usuarioCPF,
-                        almoxarifado,
-                        categoria,
-                        item,
-                        tamanho,
-                        quantidade: 1,
-                        operacao,
-                        destinacao: 'Ajuste rápido (+/-)'
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const result = await response.json();
@@ -1262,8 +1450,134 @@
                 // Se a linha ainda estiver no DOM (caminho de erro — o sucesso
                 // já reconstrói a tabela via recarregarEstoqueSilencioso),
                 // reabilita os botões dela.
-                row.querySelectorAll('.qty-btn').forEach(b => b.disabled = false);
+                if (row) row.querySelectorAll('.qty-btn').forEach(b => b.disabled = false);
             }
+        }
+
+        let pendingSaida = null;
+
+        document.getElementById('estoqueBody').addEventListener('click', (e) => {
+            const nomeClicavel = e.target.closest('.item-clickable');
+            if (nomeClicavel) {
+                abrirDetalhesItem(nomeClicavel.closest('tr'));
+                return;
+            }
+
+            const btn = e.target.closest('.qty-btn');
+            if (!btn || btn.disabled) return;
+            if (ajusteEmAndamento) return;
+
+            const row = btn.closest('tr');
+            const almoxarifado = row.dataset.almoxarifado;
+            const categoria = row.dataset.categoria;
+            const item = row.dataset.item;
+            const tamanho = row.dataset.tamanho;
+            const operacao = btn.classList.contains('qty-plus') ? 'entrada' : 'saída';
+
+            if (operacao === 'saída') {
+                // Saída exige informar para quem foi o material antes de lançar.
+                pendingSaida = { almoxarifado, categoria, item, tamanho, operacao };
+                const input = document.getElementById('destinatarioInput');
+                input.value = '';
+                modalDestinatario.classList.add('active');
+                setTimeout(() => input.focus(), 0);
+                return;
+            }
+
+            executarAjusteRapido({ almoxarifado, categoria, item, tamanho, operacao });
+        });
+
+        // ============================================================================
+        // MODAL DETALHES DO ITEM (MARCA, PATRIMÔNIO, Nº SÉRIE, STATUS, OBS.)
+        // ============================================================================
+
+        const modalDetalhesItem = document.getElementById('modalDetalhesItem');
+        const btnFecharModalDetalhesItem = document.getElementById('btnFecharModalDetalhesItem');
+
+        function abrirDetalhesItem(row) {
+            if (!row) return;
+            const { almoxarifado, categoria, item, tamanho } = row.dataset;
+            const dados = estadoGlobal.estoque.find(d =>
+                d.almoxarifado === almoxarifado &&
+                d.categoria === categoria &&
+                d.item === item &&
+                (d.tamanho || '-') === tamanho
+            );
+            if (!dados) return;
+
+            document.getElementById('detalhesItemTitulo').textContent = dados.item;
+
+            const campos = [
+                ['Almoxarifado', dados.almoxarifado],
+                ['Categoria', dados.categoria],
+                ['Tipo', dados.tipo],
+                ['Tamanho', dados.tamanho],
+                ['Quantidade', dados.quantidade],
+                ['Marca', dados.marca],
+                ['Patrimônio', dados.patrimonio],
+                ['Nº de Série', dados.nSerie],
+                ['Status', dados.status],
+                ['Observações', dados.obs]
+            ].filter(([, valor]) => valor !== '' && valor !== null && valor !== undefined);
+
+            document.getElementById('detalhesItemLista').innerHTML = campos.map(([rotulo, valor]) => `
+                <div class="detalhes-linha">
+                    <span>${escapeHtml(rotulo)}</span>
+                    <span>${escapeHtml(String(valor))}</span>
+                </div>
+            `).join('');
+
+            modalDetalhesItem.classList.add('active');
+        }
+
+        function fecharModalDetalhesItem() {
+            modalDetalhesItem.classList.remove('active');
+        }
+
+        btnFecharModalDetalhesItem.addEventListener('click', fecharModalDetalhesItem);
+        modalDetalhesItem.addEventListener('click', (e) => {
+            if (e.target === modalDetalhesItem) fecharModalDetalhesItem();
+        });
+
+        // ============================================================================
+        // MODAL DESTINATÁRIO (PARA QUEM VAI O MATERIAL NA SAÍDA)
+        // ============================================================================
+
+        const modalDestinatario = document.getElementById('modalDestinatario');
+        const formDestinatario = document.getElementById('formDestinatario');
+        const btnFecharModalDestinatario = document.getElementById('btnFecharModalDestinatario');
+        const btnCancelarDestinatario = document.getElementById('btnCancelarDestinatario');
+
+        function fecharModalDestinatario() {
+            modalDestinatario.classList.remove('active');
+            formDestinatario.reset();
+            pendingSaida = null;
+        }
+
+        [btnFecharModalDestinatario, btnCancelarDestinatario].forEach(btn => {
+            btn.addEventListener('click', fecharModalDestinatario);
+        });
+
+        modalDestinatario.addEventListener('click', (e) => {
+            if (e.target === modalDestinatario) fecharModalDestinatario();
+        });
+
+        formDestinatario.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!pendingSaida) return;
+
+            const destinatario = document.getElementById('destinatarioInput').value.trim();
+            if (!destinatario) {
+                mostrarToast('Informe o militar ou pago que está recebendo o material', 'error');
+                return;
+            }
+
+            const contexto = { ...pendingSaida, destinatario };
+            modalDestinatario.classList.remove('active');
+            formDestinatario.reset();
+            pendingSaida = null;
+
+            await executarAjusteRapido(contexto);
         });
 
         // ============================================================================
