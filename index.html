@@ -1193,6 +1193,29 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // O Google Sheets/Apps Script devolve o valor de uma célula com o tipo
+        // que "parece" ter: uma célula de Tamanho preenchida com "42" (comum em
+        // calçado/fardamento) chega como NUMBER no JSON, não como texto. Só que
+        // os atributos data-* do HTML são sempre STRING (o navegador converte
+        // automaticamente ao montar a tabela). Isso fazia a comparação estrita
+        // (===) usada para localizar o item no ajuste de +/- (e no cadastro de
+        // item novo) falhar sempre que o Tamanho fosse puramente numérico —
+        // resultando no erro "Item não encontrado no estoque atual", sem
+        // registrar a transação nem gravar o destinatário na coluna J.
+        // Normalizamos os campos-chave para string assim que os dados chegam
+        // da API, então toda comparação posterior compara string com string.
+        function normalizarEstoque(dados) {
+            return (dados || []).map(d => ({
+                ...d,
+                almoxarifado: String(d.almoxarifado ?? ''),
+                categoria: String(d.categoria ?? ''),
+                item: String(d.item ?? ''),
+                tamanho: (d.tamanho === undefined || d.tamanho === null || d.tamanho === '')
+                    ? ''
+                    : String(d.tamanho)
+            }));
+        }
+
         // ============================================================================
         // LOGIN
         // ============================================================================
@@ -1300,7 +1323,7 @@
                 const almoxarifados = await fetch(`${API_URL}?acao=getAlmoxarifados`).then(r => r.json());
 
                 if (estoque.sucesso && estoque.dados) {
-                    estadoGlobal.estoque = estoque.dados;
+                    estadoGlobal.estoque = normalizarEstoque(estoque.dados);
                 }
                 if (categorias.sucesso && categorias.dados) {
                     estadoGlobal.categorias = categorias.dados;
@@ -1331,7 +1354,7 @@
         async function recarregarEstoqueSilencioso() {
             const estoque = await fetch(`${API_URL}?acao=getEstoque`).then(r => r.json());
             if (estoque.sucesso && estoque.dados) {
-                estadoGlobal.estoque = estoque.dados;
+                estadoGlobal.estoque = normalizarEstoque(estoque.dados);
             }
             estadoGlobal.ultimaAtualizacao = new Date();
             renderizarEstoque();
