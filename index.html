@@ -637,6 +637,21 @@
             vertical-align: super;
         }
 
+        /* Aviso sob o nome do item quando a busca bateu com patrimônio ou nº
+           de série (campos que não aparecem na tabela). inline-block para não
+           herdar o sublinhado do hover de .item-clickable. */
+        .match-info {
+            display: inline-block;
+            margin-top: 0.2rem;
+            padding: 0.05rem 0.45rem;
+            border-radius: 4px;
+            background: #fff3cd;
+            color: #7a5c00;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
         .detalhes-lista {
             display: flex;
             flex-direction: column;
@@ -1014,7 +1029,7 @@
                 <div class="estoque-header">
                     <h2>Estoque Atual</h2>
                     <div class="search-row">
-                        <input type="text" id="filtroItemTexto" placeholder="Buscar por nome do item..." autocomplete="off">
+                        <input type="text" id="filtroItemTexto" placeholder="Nome, patrimônio ou série..." autocomplete="off">
                         <button type="button" id="btnLimparFiltro" class="btn-limpar-filtro">Limpar filtro</button>
                     </div>
                 </div>
@@ -1369,6 +1384,41 @@
         // RENDERIZAR ESTOQUE
         // ============================================================================
 
+        // ---- Busca: nome do item, nº de patrimônio e nº de série ----
+        // Um mesmo equipamento pode ter vários números de patrimônio/série na
+        // mesma célula da planilha, separados por vírgula, ponto e vírgula ou
+        // quebra de linha (ex.: "149918; 149919, 150020"). A busca olha cada
+        // número individualmente.
+
+        // Minúsculas e sem acentos: "calca" encontra "Calça".
+        function normalizarBusca(valor) {
+            return String(valor ?? '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[̀-ͯ]/g, '');
+        }
+
+        // Só letras e números: "1379 031-HH" e "1379031hh" contam como iguais.
+        function compactarBusca(valor) {
+            return normalizarBusca(valor).replace(/[^a-z0-9]/g, '');
+        }
+
+        // Patrimônio/série podem chegar como NUMBER (célula numérica) — String()
+        // cobre os dois casos antes de dividir.
+        function dividirNumeros(valor) {
+            return String(valor ?? '')
+                .split(/[,;\n]+/)
+                .map(token => token.trim())
+                .filter(Boolean);
+        }
+
+        // Devolve os números da célula que contêm o termo buscado.
+        function numerosCorrespondentes(valorCelula, termoBusca) {
+            const alvo = compactarBusca(termoBusca);
+            if (!alvo) return [];
+            return dividirNumeros(valorCelula).filter(numero => compactarBusca(numero).includes(alvo));
+        }
+
         function renderizarEstoque() {
             const tbody = document.getElementById('estoqueBody');
             const filtroAlmox = document.getElementById('filterAlmoxarifado').value;
@@ -1385,7 +1435,12 @@
                 dados = dados.filter(d => d.categoria === filtroCateg);
             }
             if (filtroTexto) {
-                dados = dados.filter(d => (d.item || '').toLowerCase().includes(filtroTexto));
+                const termoNome = normalizarBusca(filtroTextoBruto);
+                dados = dados.filter(d =>
+                    normalizarBusca(d.item).includes(termoNome) ||
+                    numerosCorrespondentes(d.patrimonio, filtroTextoBruto).length > 0 ||
+                    numerosCorrespondentes(d.nSerie, filtroTextoBruto).length > 0
+                );
             }
 
             if (dados.length === 0) {
@@ -1404,9 +1459,22 @@
                 // está preenchida, o nome do item vira clicável e abre um pop-up
                 // com essas informações extras.
                 const temDetalhes = !!(item.marca || item.patrimonio || item.nSerie || item.status || item.obs || item.fotos);
+                // Se a busca bateu com patrimônio ou nº de série (que não estão
+                // na tabela), mostra qual número casou para o usuário entender
+                // por que a linha apareceu.
+                const dicas = [];
+                if (filtroTextoBruto) {
+                    const achadosPat = numerosCorrespondentes(item.patrimonio, filtroTextoBruto);
+                    const achadosSerie = numerosCorrespondentes(item.nSerie, filtroTextoBruto);
+                    if (achadosPat.length) dicas.push('Patrimônio: ' + achadosPat.join(', '));
+                    if (achadosSerie.length) dicas.push('Nº série: ' + achadosSerie.join(', '));
+                }
+                const dicaHtml = dicas.length
+                    ? `<br><span class="match-info">${escapeHtml(dicas.join(' · '))}</span>`
+                    : '';
                 const itemCelula = temDetalhes
-                    ? `<td class="item-clickable" title="Ver mais informações">${escapeHtml(item.item)}<span class="info-icon" aria-hidden="true">&#9432;</span></td>`
-                    : `<td>${escapeHtml(item.item)}</td>`;
+                    ? `<td class="item-clickable" title="Ver mais informações">${escapeHtml(item.item)}<span class="info-icon" aria-hidden="true">&#9432;</span>${dicaHtml}</td>`
+                    : `<td>${escapeHtml(item.item)}${dicaHtml}</td>`;
                 return `
                 <tr data-almoxarifado="${escapeHtml(item.almoxarifado)}" data-categoria="${escapeHtml(item.categoria)}" data-item="${escapeHtml(item.item)}" data-tamanho="${escapeHtml(tamanho)}">
                     <td>${escapeHtml(item.almoxarifado)}</td>
