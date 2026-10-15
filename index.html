@@ -712,6 +712,30 @@
             max-width: 60%;
         }
 
+        /* Linha de Status inteira destacada em cor viva (rótulo + valor). */
+        .detalhes-linha.status-linha {
+            align-items: center;
+            padding: 0.7rem 0.9rem;
+            margin: 0.1rem 0;
+            border-radius: 8px;
+            border-bottom: none;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        }
+
+        .detalhes-linha.status-linha span:first-child,
+        .detalhes-linha.status-linha span:last-child {
+            color: inherit;
+            font-weight: 800;
+            font-size: 1rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .status-linha.status-operando { background: #1e8e3e; color: #fff; }
+        .status-linha.status-reserva  { background: #f9a825; color: #2b1d00; }
+        .status-linha.status-baixada  { background: #d50000; color: #fff; }
+        .status-linha.status-outro    { background: #546e7a; color: #fff; }
+
         .fotos-secao {
             margin-top: 1rem;
             padding-top: 1rem;
@@ -1729,7 +1753,7 @@
         // outras informações: Operando (verde), Reserva (amarelo), Baixada
         // (vermelho). Qualquer outro texto cadastrado na planilha cai no
         // estilo neutro (cinza), sem quebrar a exibição.
-        function renderizarStatusBadge(valor) {
+        function classeStatus(valor) {
             const texto = String(valor).trim();
             const normalizado = texto
                 .toLowerCase()
@@ -1740,7 +1764,7 @@
             else if (normalizado === 'reserva') classe = 'status-reserva';
             else if (normalizado === 'baixada') classe = 'status-baixada';
 
-            return `<span class="status-badge ${classe}">${escapeHtml(texto)}</span>`;
+            return classe;
         }
 
         function abrirDetalhesItem(row) {
@@ -1769,12 +1793,15 @@
                 ['Observações', dados.obs]
             ].filter(([, valor]) => valor !== '' && valor !== null && valor !== undefined);
 
-            document.getElementById('detalhesItemLista').innerHTML = campos.map(([rotulo, valor]) => `
-                <div class="detalhes-linha">
+            document.getElementById('detalhesItemLista').innerHTML = campos.map(([rotulo, valor]) => {
+                const extra = rotulo === 'Status' ? ` status-linha ${classeStatus(valor)}` : '';
+                return `
+                <div class="detalhes-linha${extra}">
                     <span>${escapeHtml(rotulo)}</span>
-                    <span>${rotulo === 'Status' ? renderizarStatusBadge(valor) : escapeHtml(String(valor))}</span>
+                    <span>${escapeHtml(String(valor).trim())}</span>
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             carregarFotos(dados);
 
