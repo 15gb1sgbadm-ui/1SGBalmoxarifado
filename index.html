@@ -1330,22 +1330,32 @@
             mostrarLoading(true);
 
             try {
-                // Carregar estoque
-                const estoque = await fetch(`${API_URL}?acao=getEstoque`).then(r => r.json());
-                // Carregar categorias
-                const categorias = await fetch(`${API_URL}?acao=getCategorias`).then(r => r.json());
-                // Carregar almoxarifados
-                const almoxarifados = await fetch(`${API_URL}?acao=getAlmoxarifados`).then(r => r.json());
+                // Estoque, categorias e almoxarifados em paralelo. As listas de
+                // categorias e almoxarifados vêm da lista suspensa das colunas
+                // A e B da aba Estoque (as abas "Almoxarifados" e "Categorias"
+                // foram removidas da planilha).
+                const [estoque, categorias, almoxarifados] = await Promise.all([
+                    fetch(`${API_URL}?acao=getEstoque`).then(r => r.json()),
+                    fetch(`${API_URL}?acao=getCategorias`).then(r => r.json()).catch(() => ({})),
+                    fetch(`${API_URL}?acao=getAlmoxarifados`).then(r => r.json()).catch(() => ({}))
+                ]);
 
                 if (estoque.sucesso && estoque.dados) {
                     estadoGlobal.estoque = normalizarEstoque(estoque.dados);
                 }
-                if (categorias.sucesso && categorias.dados) {
-                    estadoGlobal.categorias = categorias.dados;
-                }
-                if (almoxarifados.sucesso && almoxarifados.dados) {
-                    estadoGlobal.almoxarifados = almoxarifados.dados;
-                }
+
+                // Se a API não devolver a lista (falha ou lista vazia), usa os
+                // valores presentes no próprio estoque para os filtros não
+                // ficarem vazios.
+                const unicos = campo => [...new Set(estadoGlobal.estoque.map(e => e[campo]).filter(Boolean))];
+
+                estadoGlobal.categorias = (categorias.sucesso && Array.isArray(categorias.dados) && categorias.dados.length)
+                    ? categorias.dados.map(c => String(c))
+                    : unicos('categoria');
+
+                estadoGlobal.almoxarifados = (almoxarifados.sucesso && Array.isArray(almoxarifados.dados) && almoxarifados.dados.length)
+                    ? almoxarifados.dados.map(a => ({ nome: String(a.nome ?? a) }))
+                    : unicos('almoxarifado').map(nome => ({ nome }));
 
                 estadoGlobal.ultimaAtualizacao = new Date();
 
@@ -1507,9 +1517,9 @@
             lancAlmox.innerHTML = '<option value="">Selecione...</option>';
             lancCateg.innerHTML = '<option value="">Selecione...</option>';
 
-            // Almoxarifados: usa a lista padronizada da aba "Almoxarifados"
-            // (getAlmoxarifados), não a derivada do estoque atual — assim
-            // aparecem mesmo os almoxarifados que ainda não têm item lançado.
+            // Almoxarifados: usa a lista suspensa da coluna A da aba Estoque
+            // (getAlmoxarifados), não só os valores já lançados — assim
+            // aparecem mesmo os almoxarifados que ainda não têm item.
             estadoGlobal.almoxarifados.forEach(a => {
                 const opt = document.createElement('option');
                 opt.value = a.nome;
@@ -1522,8 +1532,8 @@
                 lancAlmox.appendChild(opt2);
             });
 
-            // Categorias: usa a lista padronizada da aba "Categorias"
-            // (getCategorias), a mesma lista suspensa configurada no Sheets.
+            // Categorias: usa a lista suspensa da coluna B da aba Estoque
+            // (getCategorias).
             estadoGlobal.categorias.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c;
@@ -1552,8 +1562,8 @@
         }
 
         // Total de itens e total em estoque agrupados por almoxarifado
-        // (SALVAMENTO, EDUCACIONAL, RESGATE etc. — usa a lista padronizada
-        // da aba "Almoxarifados", assim mostra também os que estão zerados).
+        // (SALVAMENTO, EDUCACIONAL, RESGATE etc. — usa a lista suspensa da
+        // coluna A da aba Estoque, assim mostra também os que estão zerados).
         function atualizarStatsPorAlmoxarifado() {
             const grid = document.getElementById('statsAlmoxGrid');
 
