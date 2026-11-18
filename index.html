@@ -1244,8 +1244,9 @@
         // Normalizamos os campos-chave para string assim que os dados chegam
         // da API, então toda comparação posterior compara string com string.
         function normalizarEstoque(dados) {
-            return (dados || []).map(d => ({
+            return (dados || []).map((d, i) => ({
                 ...d,
+                rowId: i,
                 almoxarifado: String(d.almoxarifado ?? ''),
                 categoria: String(d.categoria ?? ''),
                 item: String(d.item ?? ''),
@@ -1510,7 +1511,7 @@
                     ? `<td class="item-clickable" title="Ver mais informações">${escapeHtml(item.item)}<span class="info-icon" aria-hidden="true">&#9432;</span>${dicaHtml}</td>`
                     : `<td>${escapeHtml(item.item)}${dicaHtml}</td>`;
                 return `
-                <tr data-almoxarifado="${escapeHtml(item.almoxarifado)}" data-categoria="${escapeHtml(item.categoria)}" data-item="${escapeHtml(item.item)}" data-tamanho="${escapeHtml(tamanho)}">
+                <tr data-row-id="${item.rowId}" data-almoxarifado="${escapeHtml(item.almoxarifado)}" data-categoria="${escapeHtml(item.categoria)}" data-item="${escapeHtml(item.item)}" data-tamanho="${escapeHtml(tamanho)}">
                     <td>${escapeHtml(item.almoxarifado)}</td>
                     <td>${escapeHtml(item.categoria)}</td>
                     ${itemCelula}
@@ -1647,13 +1648,8 @@
         // Executa de fato o lançamento de 1 unidade (entrada ou saída) e
         // recarrega o estoque. Para saída, "destinatario" (militar ou pago)
         // é enviado e gravado pelo backend na coluna J da aba Transacoes.
-        async function executarAjusteRapido({ almoxarifado, categoria, item, tamanho, operacao, destinatario }) {
-            const itemAtual = estadoGlobal.estoque.find(d =>
-                d.almoxarifado === almoxarifado &&
-                d.categoria === categoria &&
-                d.item === item &&
-                (d.tamanho || '-') === tamanho
-            );
+        async function executarAjusteRapido({ rowId, almoxarifado, categoria, item, tamanho, operacao, destinatario }) {
+            const itemAtual = estadoGlobal.estoque.find(d => String(d.rowId) === String(rowId));
 
             if (!itemAtual) {
                 mostrarToast('Item não encontrado no estoque atual. Clique em Atualizar.', 'error');
@@ -1665,7 +1661,7 @@
                 return;
             }
 
-            const row = encontrarLinhaEstoque(almoxarifado, categoria, item, tamanho);
+            const row = document.querySelector(`#estoqueBody tr[data-row-id="${rowId}"]`);
 
             ajusteEmAndamento = true;
             if (row) row.querySelectorAll('.qty-btn').forEach(b => b.disabled = true);
@@ -1678,6 +1674,10 @@
                     categoria,
                     item,
                     tamanho,
+                    // Identificadores da unidade exata (o backend deve usar
+                    // patrimônio/série para escolher a linha da planilha).
+                    patrimonio: itemAtual.patrimonio || '',
+                    nSerie: itemAtual.nSerie || '',
                     quantidade: 1,
                     operacao,
                     destinacao: 'Ajuste rápido (+/-)'
@@ -1723,6 +1723,7 @@
             if (ajusteEmAndamento) return;
 
             const row = btn.closest('tr');
+            const rowId = row.dataset.rowId;
             const almoxarifado = row.dataset.almoxarifado;
             const categoria = row.dataset.categoria;
             const item = row.dataset.item;
@@ -1731,7 +1732,7 @@
 
             if (operacao === 'saída') {
                 // Saída exige informar para quem foi o material antes de lançar.
-                pendingSaida = { almoxarifado, categoria, item, tamanho, operacao };
+                pendingSaida = { rowId, almoxarifado, categoria, item, tamanho, operacao };
                 const input = document.getElementById('destinatarioInput');
                 input.value = '';
                 modalDestinatario.classList.add('active');
@@ -1739,7 +1740,7 @@
                 return;
             }
 
-            executarAjusteRapido({ almoxarifado, categoria, item, tamanho, operacao });
+            executarAjusteRapido({ rowId, almoxarifado, categoria, item, tamanho, operacao });
         });
 
         // ============================================================================
@@ -1769,13 +1770,9 @@
 
         function abrirDetalhesItem(row) {
             if (!row) return;
-            const { almoxarifado, categoria, item, tamanho } = row.dataset;
-            const dados = estadoGlobal.estoque.find(d =>
-                d.almoxarifado === almoxarifado &&
-                d.categoria === categoria &&
-                d.item === item &&
-                (d.tamanho || '-') === tamanho
-            );
+            // Localiza pelo rowId (linha exata), e não pela chave: unidades
+            // com o mesmo nome/tamanho (ex.: Rádios HT) não se confundem mais.
+            const dados = estadoGlobal.estoque.find(d => String(d.rowId) === row.dataset.rowId);
             if (!dados) return;
 
             document.getElementById('detalhesItemTitulo').textContent = dados.item;
